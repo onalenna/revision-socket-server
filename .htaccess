@@ -1,0 +1,36 @@
+# Socket.IO Server .htaccess for cPanel
+# This file helps route Socket.IO requests properly
+
+# Enable rewrite engine
+RewriteEngine On
+
+# Handle Socket.IO requests
+RewriteCond %{REQUEST_URI} ^/socket\.io/ [NC]
+RewriteRule ^socket\.io/(.*)$ http://localhost:3001/socket.io/$1 [P,L]
+
+# Handle health check
+RewriteCond %{REQUEST_URI} ^/health$ [NC]
+RewriteRule ^health$ http://localhost:3001/health [P,L]
+
+# Handle calls endpoint
+RewriteCond %{REQUEST_URI} ^/calls$ [NC]
+RewriteRule ^calls$ http://localhost:3001/calls [P,L]
+
+# Handle root endpoint
+RewriteCond %{REQUEST_URI} ^/$ [NC]
+RewriteRule ^$ http://localhost:3001/ [P,L]
+
+# Set headers for WebSocket support
+Header always set Access-Control-Allow-Origin "*"
+Header always set Access-Control-Allow-Methods "GET, POST, OPTIONS"
+Header always set Access-Control-Allow-Headers "Content-Type, Authorization"
+
+# Enable WebSocket proxying
+RewriteCond %{HTTP:Upgrade} websocket [NC]
+RewriteCond %{HTTP:Connection} upgrade [NC]
+RewriteRule ^(.*)$ ws://localhost:3001/$1 [P,L]
+
+# Fallback for all other requests
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ http://localhost:3001/$1 [P,L]

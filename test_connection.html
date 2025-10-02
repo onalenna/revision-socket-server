@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ReVision Socket.IO Test</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+        .warning { background-color: #fff3cd; color: #856404; }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background-color: #0056b3; }
+        button:disabled { background-color: #6c757d; cursor: not-allowed; }
+        .log {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 10px;
+            border-radius: 4px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 ReVision Socket.IO Server Test</h1>
+        <p>This page tests the Socket.IO server connection for video streaming.</p>
+        
+        <div id="status" class="status info">Ready to test connection...</div>
+        
+        <div>
+            <button onclick="testConnection()">Test Connection</button>
+            <button onclick="testJoinCall()" id="joinBtn" disabled>Join Test Call</button>
+            <button onclick="testLeaveCall()" id="leaveBtn" disabled>Leave Call</button>
+            <button onclick="clearLog()">Clear Log</button>
+        </div>
+        
+        <h3>Connection Log:</h3>
+        <div id="log" class="log"></div>
+        
+        <h3>Test Instructions:</h3>
+        <ol>
+            <li>Click "Test Connection" to connect to the Socket.IO server</li>
+            <li>If connection is successful, click "Join Test Call"</li>
+            <li>Check the log for real-time events</li>
+            <li>Use "Leave Call" to disconnect from the test call</li>
+        </ol>
+        
+        <h3>Expected Behavior:</h3>
+        <ul>
+            <li>✅ Connection should establish successfully</li>
+            <li>✅ Joining a call should work without errors</li>
+            <li>✅ Server should respond to ping/pong</li>
+            <li>✅ Leaving a call should clean up properly</li>
+        </ul>
+    </div>
+
+    <script>
+        let socket = null;
+        let isConnected = false;
+        let currentCallId = null;
+        
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logElement = document.getElementById('log');
+            const logEntry = document.createElement('div');
+            logEntry.innerHTML = `[${timestamp}] ${message}`;
+            logEntry.style.color = type === 'error' ? '#721c24' : 
+                                  type === 'success' ? '#155724' : 
+                                  type === 'warning' ? '#856404' : '#0c5460';
+            logElement.appendChild(logEntry);
+            logElement.scrollTop = logElement.scrollHeight;
+            console.log(`[${timestamp}] ${message}`);
+        }
+        
+        function updateStatus(message, type = 'info') {
+            const statusElement = document.getElementById('status');
+            statusElement.textContent = message;
+            statusElement.className = `status ${type}`;
+        }
+        
+        function updateButtons() {
+            document.getElementById('joinBtn').disabled = !isConnected || currentCallId !== null;
+            document.getElementById('leaveBtn').disabled = !isConnected || currentCallId === null;
+        }
+        
+        function testConnection() {
+            log('🔄 Attempting to connect to Socket.IO server...');
+            updateStatus('Connecting...', 'info');
+            
+            // Connect to Socket.IO server
+            socket = io('https://ezrlab.com', {
+                path: '/vision/api/socket/socket.io/',
+                transports: ['websocket', 'polling'],
+                timeout: 10000,
+                forceNew: true
+            });
+            
+            // Connection events
+            socket.on('connect', () => {
+                log('✅ Connected to Socket.IO server!', 'success');
+                log(`🔗 Socket ID: ${socket.id}`, 'info');
+                updateStatus('Connected successfully!', 'success');
+                isConnected = true;
+                updateButtons();
+            });
+            
+            socket.on('connect_error', (error) => {
+                log(`❌ Connection error: ${error.message}`, 'error');
+                updateStatus('Connection failed', 'error');
+                isConnected = false;
+                updateButtons();
+            });
+            
+            socket.on('disconnect', (reason) => {
+                log(`🔌 Disconnected: ${reason}`, 'warning');
+                updateStatus('Disconnected', 'warning');
+                isConnected = false;
+                currentCallId = null;
+                updateButtons();
+            });
+            
+            // Call events
+            socket.on('joined_call', (data) => {
+                log(`🎉 Joined call: ${data.callId}`, 'success');
+                log(`👥 Participants: ${data.participantCount}`, 'info');
+            });
+            
+            socket.on('user_joined', (data) => {
+                log(`👋 User joined: ${data.userId}`, 'info');
+            });
+            
+            socket.on('user_left', (data) => {
+                log(`👋 User left: ${data.userId}`, 'info');
+            });
+            
+            socket.on('call_ended', (data) => {
+                log(`📞 Call ended by: ${data.endedBy}`, 'warning');
+                currentCallId = null;
+                updateButtons();
+            });
+            
+            socket.on('video_frame', (data) => {
+                log(`📹 Video frame received from: ${data.userId}`, 'info');
+            });
+            
+            socket.on('call_status_update', (data) => {
+                log(`📊 Status update from ${data.userId}: ${data.status}`, 'info');
+            });
+            
+            socket.on('error', (error) => {
+                log(`❌ Server error: ${error.message}`, 'error');
+            });
+            
+            // Ping/pong test
+            socket.on('pong', () => {
+                log('🏓 Pong received from server', 'success');
+            });
+        }
+        
+        function testJoinCall() {
+            if (!socket || !isConnected) {
+                log('❌ Not connected to server', 'error');
+                return;
+            }
+            
+            currentCallId = 'test-call-' + Date.now();
+            const userId = 'test-user-' + Math.random().toString(36).substr(2, 9);
+            
+            log(`🎯 Joining test call: ${currentCallId}`, 'info');
+            log(`👤 User ID: ${userId}`, 'info');
+            
+            socket.emit('join_call', {
+                callId: currentCallId,
+                userId: userId,
+                timestamp: Date.now()
+            });
+            
+            updateButtons();
+        }
+        
+        function testLeaveCall() {
+            if (!socket || !isConnected || !currentCallId) {
+                log('❌ Not in a call', 'error');
+                return;
+            }
+            
+            log(`🚪 Leaving call: ${currentCallId}`, 'info');
+            
+            socket.emit('leave_call', {
+                callId: currentCallId,
+                userId: socket.userId || 'test-user'
+            });
+            
+            currentCallId = null;
+            updateButtons();
+        }
+        
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+            log('🧹 Log cleared', 'info');
+        }
+        
+        // Initialize
+        updateButtons();
+        log('🚀 Socket.IO test page loaded', 'info');
+        log('🌐 Server URL: https://ezrlab.com/vision/api/socket/', 'info');
+        
+        // Test ping every 30 seconds when connected
+        setInterval(() => {
+            if (socket && isConnected) {
+                socket.emit('ping');
+                log('🏓 Ping sent to server', 'info');
+            }
+        }, 30000);
+    </script>
+</body>
+</html>
