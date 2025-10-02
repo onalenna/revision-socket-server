@@ -1,0 +1,16 @@
+{
+  "name": "revision-socket-server",
+  "version": "1.0.0",
+  "main": "socket_server_cpanel.js",
+  "scripts": {
+    "start": "node socket_server_cpanel.js"
+  },
+  "dependencies": {
+    "express": "4.18.2",
+    "socket.io": "4.7.2",
+    "cors": "2.8.5"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
