@@ -128,13 +128,16 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Handle video frames with rate limiting
+  // Handle video frames with optimized rate limiting for smooth streaming
   const frameRateLimits = new Map();
   socket.on('video_frame', (data) => {
     try {
-      const { callId, userId, frameData, timestamp } = data;
+      const { callId, userId, frameData, timestamp, frameRate } = data;
       
-      // Rate limiting (max 20 FPS per user)
+      // Dynamic rate limiting based on client frame rate (default 10 FPS)
+      const targetFPS = frameRate || 10;
+      const maxFPS = Math.min(targetFPS * 1.2, 15); // Allow 20% buffer, max 15 FPS
+      
       const now = Date.now();
       const userLimit = frameRateLimits.get(userId) || { count: 0, resetTime: now + 1000 };
       
@@ -143,7 +146,7 @@ io.on('connection', (socket) => {
         userLimit.resetTime = now + 1000;
       }
       
-      if (userLimit.count >= 20) {
+      if (userLimit.count >= maxFPS) {
         return; // Skip frame if rate limit exceeded
       }
       
@@ -155,11 +158,12 @@ io.on('connection', (socket) => {
         activeCalls.get(callId).lastActivity = now;
       }
       
-      // Forward frame to other participants in the call
+      // Forward frame to other participants in the call with optimized data
       socket.to(callId).emit('video_frame', {
         userId: userId,
         frameData: frameData,
-        timestamp: timestamp || now
+        timestamp: timestamp || now,
+        frameRate: frameRate
       });
     } catch (error) {
       console.error('Error in video_frame:', error);
