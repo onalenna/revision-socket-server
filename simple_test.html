@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Video Call API Test</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .btn-connect { background: #28a745; color: white; }
+        .btn-disconnect { background: #dc3545; color: white; }
+        .btn-test { background: #007bff; color: white; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-danger { background: #dc3545; color: white; }
+        
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+        .connected { background: #d4edda; color: #155724; }
+        .disconnected { background: #f8d7da; color: #721c24; }
+        .connecting { background: #fff3cd; color: #856404; }
+        
+        .log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        
+        input {
+            padding: 8px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 200px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎥 Simple Video Call API Test</h1>
+    
+    <div class="container">
+        <h2>📡 Server Connection</h2>
+        <div id="status" class="status disconnected">Disconnected</div>
+        <button id="connectBtn" class="btn-connect" onclick="connect()">Connect to Railway Server</button>
+        <button id="disconnectBtn" class="btn-disconnect" onclick="disconnect()" disabled>Disconnect</button>
+    </div>
+
+    <div class="container">
+        <h2>📞 Call Testing</h2>
+        <input type="text" id="callId" placeholder="Call ID" value="test123">
+        <input type="text" id="userId" placeholder="User ID" value="user1">
+        <br>
+        <button id="joinBtn" class="btn-test" onclick="joinCall()" disabled>Join Call</button>
+        <button id="leaveBtn" class="btn-test" onclick="leaveCall()" disabled>Leave Call</button>
+        <button id="endBtn" class="btn-danger" onclick="endCall()" disabled>End Call</button>
+    </div>
+
+    <div class="container">
+        <h2>🎥 Video Frame Testing</h2>
+        <button id="startVideoBtn" class="btn-success" onclick="startVideoTest()" disabled>Start Video Test</button>
+        <button id="stopVideoBtn" class="btn-danger" onclick="stopVideoTest()" disabled>Stop Video Test</button>
+        <div id="frameCount">Frames sent: 0</div>
+    </div>
+
+    <div class="container">
+        <h2>📝 Activity Log</h2>
+        <div id="log" class="log"></div>
+        <button onclick="clearLog()">Clear Log</button>
+    </div>
+
+    <script>
+        let socket = null;
+        let isConnected = false;
+        let currentCallId = null;
+        let currentUserId = null;
+        let videoTestInterval = null;
+        let frameCount = 0;
+
+        function updateStatus(message, className) {
+            document.getElementById('status').textContent = message;
+            document.getElementById('status').className = `status ${className}`;
+            log(message);
+        }
+
+        function log(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            const logDiv = document.getElementById('log');
+            logDiv.innerHTML += `[${timestamp}] ${message}<br>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+
+        function updateButtons() {
+            document.getElementById('connectBtn').disabled = isConnected;
+            document.getElementById('disconnectBtn').disabled = !isConnected;
+            document.getElementById('joinBtn').disabled = !isConnected;
+            document.getElementById('leaveBtn').disabled = !isConnected || !currentCallId;
+            document.getElementById('endBtn').disabled = !isConnected || !currentCallId;
+            document.getElementById('startVideoBtn').disabled = !isConnected || !currentCallId;
+            document.getElementById('stopVideoBtn').disabled = !videoTestInterval;
+        }
+
+        function connect() {
+            if (socket) return;
+            
+            updateStatus('Connecting...', 'connecting');
+            log('Connecting to Railway server...');
+            
+            socket = io('https://revision-socket-server-production.up.railway.app', {
+                transports: ['websocket', 'polling'],
+                timeout: 10000
+            });
+
+            socket.on('connect', () => {
+                isConnected = true;
+                updateStatus('Connected to Railway Server', 'connected');
+                log('✅ Connected to server successfully!');
+                updateButtons();
+            });
+
+            socket.on('disconnect', () => {
+                isConnected = false;
+                updateStatus('Disconnected', 'disconnected');
+                log('❌ Disconnected from server');
+                currentCallId = null;
+                currentUserId = null;
+                updateButtons();
+            });
+
+            socket.on('connect_error', (error) => {
+                updateStatus('Connection Failed', 'disconnected');
+                log(`❌ Connection error: ${error.message}`);
+                socket = null;
+                updateButtons();
+            });
+
+            // Test video frame reception
+            socket.on('video_frame', (data) => {
+                log(`📹 Received video frame from user: ${data.userId}`);
+            });
+
+            socket.on('call_ended', () => {
+                log('📞 Call ended by other participant');
+                currentCallId = null;
+                updateButtons();
+            });
+
+            socket.on('user_joined', (data) => {
+                log(`👤 User ${data.userId} joined the call`);
+            });
+
+            socket.on('user_left', (data) => {
+                log(`👤 User ${data.userId} left the call`);
+            });
+
+            socket.on('error', (error) => {
+                log(`❌ Server error: ${error.message}`);
+            });
+        }
+
+        function disconnect() {
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+                isConnected = false;
+                updateStatus('Disconnected', 'disconnected');
+                log('Disconnected from server');
+                updateButtons();
+            }
+        }
+
+        function joinCall() {
+            if (!socket || !isConnected) return;
+            
+            currentCallId = document.getElementById('callId').value || 'test123';
+            currentUserId = document.getElementById('userId').value || 'user1';
+            
+            socket.emit('join_call', {
+                callId: currentCallId,
+                userId: currentUserId,
+                timestamp: Date.now()
+            });
+            
+            log(`📞 Joined call: ${currentCallId} as user: ${currentUserId}`);
+            updateButtons();
+        }
+
+        function leaveCall() {
+            if (!socket || !currentCallId) return;
+            
+            socket.emit('leave_call', {
+                callId: currentCallId,
+                userId: currentUserId,
+                timestamp: Date.now()
+            });
+            
+            log(`📞 Left call: ${currentCallId}`);
+            currentCallId = null;
+            currentUserId = null;
+            updateButtons();
+        }
+
+        function endCall() {
+            if (!socket || !currentCallId) return;
+            
+            socket.emit('end_call', {
+                callId: currentCallId,
+                userId: currentUserId,
+                timestamp: Date.now()
+            });
+            
+            log(`📞 Ended call: ${currentCallId}`);
+            stopVideoTest();
+            currentCallId = null;
+            currentUserId = null;
+            updateButtons();
+        }
+
+        function startVideoTest() {
+            if (!socket || !currentCallId) return;
+            
+            log('🎥 Starting video frame test...');
+            frameCount = 0;
+            
+            videoTestInterval = setInterval(() => {
+                if (!socket || !currentCallId) {
+                    clearInterval(videoTestInterval);
+                    return;
+                }
+                
+                // Create a simple test frame (base64 encoded 1x1 pixel)
+                const testFrame = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==';
+                
+                socket.emit('video_frame', {
+                    callId: currentCallId,
+                    userId: currentUserId,
+                    frameData: testFrame,
+                    timestamp: Date.now(),
+                    frameRate: 5
+                });
+                
+                frameCount++;
+                document.getElementById('frameCount').textContent = `Frames sent: ${frameCount}`;
+                
+                if (frameCount % 10 === 0) {
+                    log(`📹 Sent ${frameCount} video frames`);
+                }
+            }, 200); // 5 FPS
+            
+            updateButtons();
+        }
+
+        function stopVideoTest() {
+            if (videoTestInterval) {
+                clearInterval(videoTestInterval);
+                videoTestInterval = null;
+                log('🎥 Stopped video frame test');
+                updateButtons();
+            }
+        }
+
+        // Initialize
+        updateButtons();
+        log('🚀 Simple Video Call API Test Page Loaded');
+        log('📋 Instructions:');
+        log('1. Click "Connect to Railway Server"');
+        log('2. Enter Call ID and User ID');
+        log('3. Click "Join Call"');
+        log('4. Click "Start Video Test" to send test frames');
+        log('5. Check the log for received frames from other users');
+    </script>
+</body>
+</html>
